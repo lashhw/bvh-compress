@@ -6,6 +6,7 @@
 #include <bvh/bvh.hpp>
 #include <bvh/sweep_sah_builder.hpp>
 #include <bvh/single_ray_traverser.hpp>
+#include <bvh/single_ray_traverser_quant.hpp>
 #include <bvh/primitive_intersectors.hpp>
 #include "happly/happly.h"
 
@@ -22,6 +23,7 @@ typedef bvh_t::Node node_t;
 typedef trig_t::Intersection intersection_t;
 
 typedef bvh::SingleRayTraverser<bvh_t> traverser_t;
+typedef bvh::SingleRayTraverserQuant<bvh_t> traverser_quant_t;
 typedef bvh::ClosestPrimitiveIntersector<bvh_t, trig_t> primitive_intersector_t;
 
 int main(int argc, char *argv[]) {
@@ -73,18 +75,15 @@ int main(int argc, char *argv[]) {
 
         bbox_t curr_bbox = curr_node.bounding_box_proxy().to_bounding_box();
         float extent[3] = {
-            (curr_node.bounds[1] - curr_bbox.min[0]),
-            (curr_node.bounds[3] - curr_bbox.min[1]),
-            (curr_node.bounds[5] - curr_bbox.min[2])
+            curr_bbox.max[0] - curr_bbox.min[0],
+            curr_bbox.max[1] - curr_bbox.min[1],
+            curr_bbox.max[2] - curr_bbox.min[2]
         };
 
-        for (auto &x : extent)
-            x = x == 0.0f ? 1.0f : x;
-
         float exp[3] = {
-            std::powf(2, std::ceil(std::log2(extent[0] / 255.0f))),
-            std::powf(2, std::ceil(std::log2(extent[1] / 255.0f))),
-            std::powf(2, std::ceil(std::log2(extent[2] / 255.0f)))
+            std::powf(2, std::ceil(std::log2((extent[0] == 0.0f ? 1.0f : extent[0]) / 255.0f))),
+            std::powf(2, std::ceil(std::log2((extent[1] == 0.0f ? 1.0f : extent[1]) / 255.0f))),
+            std::powf(2, std::ceil(std::log2((extent[2] == 0.0f ? 1.0f : extent[2]) / 255.0f)))
         };
 
         if (!curr_node.is_leaf()) {
@@ -103,6 +102,9 @@ int main(int argc, char *argv[]) {
 
                     assert(node->bounds[i * 2] <= old_bound_min);
                     assert(node->bounds[i * 2 + 1] >= old_bound_max);
+
+                    node->bounds_quant[i * 2] = static_cast<uint8_t>(bound_quant_min_fp32);
+                    node->bounds_quant[i * 2 + 1] = static_cast<uint8_t>(bound_quant_max_fp32);
                 }
             }
             queue.emplace(left_idx);
@@ -118,13 +120,13 @@ int main(int argc, char *argv[]) {
     std::cout << "traversing..." << std::endl;
 
     traverser_t traverser(bvh);
-    traverser_t traverser_quant(bvh_quant);
+    traverser_quant_t traverser_quant(bvh_quant);
 
     primitive_intersector_t primitive_intersector(bvh, trigs.data());
     primitive_intersector_t primitive_intersector_quant(bvh_quant, trigs.data());
 
     traverser_t::Statistics statistics;
-    traverser_t::Statistics statistics_quant;
+    traverser_quant_t::Statistics statistics_quant;
 
     intmax_t correct_rays = 0;
     intmax_t total_rays = 0;
