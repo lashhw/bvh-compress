@@ -1,0 +1,6 @@
+[submodule "bvh"]
+	path = bvh
+	url = git@github.com:lashhw/bvh.git
+[submodule "happly"]
+	path = happly
+	url = https://github.com/nmwsharp/happly.git
