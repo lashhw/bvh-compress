@@ -64,9 +64,12 @@ int main(int argc, char *argv[]) {
     std::queue<size_t> queue;
     queue.emplace(0);
     while (!queue.empty()) {
-        size_t ref_idx = queue.front();
-        node_t& curr_node = bvh_quant.nodes[ref_idx];
+        size_t curr_idx = queue.front();
+        node_t& curr_node = bvh_quant.nodes[curr_idx];
         queue.pop();
+
+        if (curr_node.is_leaf())
+            continue;
 
         size_t left_idx = curr_node.first_child_or_primitive;
         node_t& left_node = bvh_quant.nodes[left_idx];
@@ -82,30 +85,28 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < 3; i++)
             curr_node.exp[i] = std::powf(2, std::ceil(std::log2((extent[i] == 0.0f ? 1.0f : extent[i]) / 255.0f)));
 
-        if (!curr_node.is_leaf()) {
-            for (auto &node : std::array<node_t*, 2>{&left_node, &right_node}) {
-                for (int i = 0; i < 3; i++) {
-                    float bound_quant_min_fp32 = std::floor((node->bounds[i * 2] - curr_bbox.min[i]) / curr_node.exp[i]);
-                    float bound_quant_max_fp32 = std::ceil((node->bounds[i * 2 + 1] - curr_bbox.min[i]) / curr_node.exp[i]);
-                    assert(0.0f <= bound_quant_min_fp32 && bound_quant_min_fp32 <= 255.0f);
-                    assert(0.0f <= bound_quant_max_fp32 && bound_quant_max_fp32 <= 255.0f);
+        for (auto &node : std::array<node_t*, 2>{&left_node, &right_node}) {
+            for (int i = 0; i < 3; i++) {
+                float bound_quant_min_fp32 = std::floor((node->bounds[i * 2] - curr_bbox.min[i]) / curr_node.exp[i]);
+                float bound_quant_max_fp32 = std::ceil((node->bounds[i * 2 + 1] - curr_bbox.min[i]) / curr_node.exp[i]);
+                assert(0.0f <= bound_quant_min_fp32 && bound_quant_min_fp32 <= 255.0f);
+                assert(0.0f <= bound_quant_max_fp32 && bound_quant_max_fp32 <= 255.0f);
 
-                    float old_bound_min = node->bounds[i * 2];
-                    float old_bound_max = node->bounds[i * 2 + 1];
+                float old_bound_min = node->bounds[i * 2];
+                float old_bound_max = node->bounds[i * 2 + 1];
 
-                    node->bounds[i * 2] = curr_bbox.min[i] + bound_quant_min_fp32 * curr_node.exp[i];
-                    node->bounds[i * 2 + 1] = curr_bbox.min[i] + bound_quant_max_fp32 * curr_node.exp[i];
+                node->bounds[i * 2] = curr_bbox.min[i] + bound_quant_min_fp32 * curr_node.exp[i];
+                node->bounds[i * 2 + 1] = curr_bbox.min[i] + bound_quant_max_fp32 * curr_node.exp[i];
 
-                    assert(node->bounds[i * 2] <= old_bound_min);
-                    assert(node->bounds[i * 2 + 1] >= old_bound_max);
+                assert(node->bounds[i * 2] <= old_bound_min);
+                assert(node->bounds[i * 2 + 1] >= old_bound_max);
 
-                    node->bounds_quant[i * 2] = static_cast<uint8_t>(bound_quant_min_fp32);
-                    node->bounds_quant[i * 2 + 1] = static_cast<uint8_t>(bound_quant_max_fp32);
-                }
+                node->bounds_quant[i * 2] = static_cast<uint8_t>(bound_quant_min_fp32);
+                node->bounds_quant[i * 2 + 1] = static_cast<uint8_t>(bound_quant_max_fp32);
             }
-            queue.emplace(left_idx);
-            queue.emplace(right_idx);
         }
+        queue.emplace(left_idx);
+        queue.emplace(right_idx);
     }
 
     bvh_t bvh;
